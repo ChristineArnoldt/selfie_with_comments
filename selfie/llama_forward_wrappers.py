@@ -423,16 +423,19 @@ def model_model_forward_interpret(
     ), all_original_hidden_states
 
 
+
+# Function to process a single decoder layer during forward pass, interpreting its behavior.
 def decoder_layer_forward_interpret(
-    hidden_states: torch.Tensor,
-    decoder_layer=None,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value: Optional[Tuple[torch.Tensor]] = None,
-    output_attentions: Optional[bool] = False,
-    use_cache: Optional[bool] = False,
-    padding_mask: Optional[torch.LongTensor] = None,
+    hidden_states: torch.Tensor,  # Input tensor of shape (batch, seq_len, embed_dim), representing token embeddings.
+    decoder_layer=None,  # The decoder layer object that implements specific transformations.
+    attention_mask: Optional[torch.Tensor] = None,  # Mask for attention mechanism; used to avoid attending to padding tokens.
+    position_ids: Optional[torch.LongTensor] = None,  # Positional encoding indices for sequence elements.
+    past_key_value: Optional[Tuple[torch.Tensor]] = None,  # Cached keys and values for attention (used in decoding for efficiency).
+    output_attentions: Optional[bool] = False,  # Whether to return attention weights for interpretability or debugging.
+    use_cache: Optional[bool] = False,  # Whether to return the updated past_key_values for reuse in future computations.
+    padding_mask: Optional[torch.LongTensor] = None,  # Mask to specify positions that should be ignored (e.g., padding).
 ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+  
     """
     Args:
         hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
@@ -446,47 +449,67 @@ def decoder_layer_forward_interpret(
             (see `past_key_values`).
         past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
     """
-
+    # Returns: Tuple containing updated hidden states, and optionally attention weights and past_key_values.
+   
+    # Store the input hidden states for use in the residual connection.
     residual = hidden_states
 
+    # Apply layer normalization to stabilize and scale the hidden states.
     hidden_states = decoder_layer.input_layernorm(hidden_states)
 
-    # Self Attention
+    # --- Self Attention Step ---
+    # Pass normalized hidden states through the self-attention mechanism.
     # print(type(hidden_states), hidden_states.shape)
     hidden_states, self_attn_weights, present_key_value = decoder_layer.self_attn(
-        hidden_states=hidden_states,
-        attention_mask=attention_mask,
-        position_ids=position_ids,
-        past_key_value=past_key_value,
-        output_attentions=output_attentions,
-        use_cache=use_cache,
-        padding_mask=padding_mask,
+        hidden_states=hidden_states,  # The normalized hidden states as input.
+        attention_mask=attention_mask,  # The attention mask to handle padding or causal masking.
+        position_ids=position_ids,  # Positional encodings for the sequence.
+        past_key_value=past_key_value,  # Cached key and value projections for reuse.
+        output_attentions=output_attentions,  # Whether to output attention weights.
+        use_cache=use_cache,  # Whether to return the updated past_key_values.
+        padding_mask=padding_mask,  # Padding mask for additional masking requirements.
     )
 
+    # Ensure the updated hidden states remain on the same device as the residual tensor.
     hidden_states = hidden_states.to(residual.device)
     # print(hidden_states.device)
     # print(residual.device)
 
+    # Add the residual (skip connection) to the output of the self-attention layer.
+    # This helps retain the original information and supports gradient flow.
     hidden_states = residual + hidden_states
 
-    # Fully Connected
+    # --- Fully Connected Step ---
+    # Update the residual to store the current state.
     residual = hidden_states
+    # Apply another layer normalization after attention for stability.
     hidden_states = decoder_layer.post_attention_layernorm(hidden_states)
+    # Save the hidden states before feeding them to the MLP (useful for interpretability).
     pre_mlp = hidden_states
+    # Pass the normalized hidden states through the multi-layer perceptron (MLP).
     hidden_states = decoder_layer.mlp(hidden_states)
 
+    # Ensure the output of the MLP remains on the same device as the residual tensor.
     hidden_states = hidden_states.to(residual.device)
     # print(hidden_states.device)
     # print(residual.device)
+    
+    # Save the original states (pre-MLP normalized states and residual) for interpretability.
     original_hidden_states = (pre_mlp, residual)
+    # Add the residual connection to the MLP output.
     hidden_states = residual + hidden_states
 
+    # --- Prepare Outputs ---
+    # Start building the output tuple with the updated hidden states.
     outputs = (hidden_states,)
 
+    # If requested, append the attention weights to the output for interpretability.
     if output_attentions:
         outputs += (self_attn_weights,)
 
+    # If requested, append the cached keys and values for decoding speedup.
     if use_cache:
         outputs += (present_key_value,)
 
+    # Return the outputs (updated hidden states and optionally other details) and the original hidden states for interpretation.
     return outputs, original_hidden_states
