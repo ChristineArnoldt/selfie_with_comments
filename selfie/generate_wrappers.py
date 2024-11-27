@@ -87,7 +87,7 @@ if is_accelerate_available():
 from .llama_forward_wrappers import model_forward_interpret, model_model_forward_interpret
 
 @dataclass
-class GreedySearchDecoderOnlyOutput(ModelOutput):
+class GreedySearchDecoderOnlyOutput(ModelOutput): # greedy search as the decoding strategy
     """
     Base class for outputs of decoder-only generation models using greedy search.
 
@@ -115,9 +115,11 @@ class GreedySearchDecoderOnlyOutput(ModelOutput):
 
 
 @dataclass
-class ContrastiveSearchEncoderDecoderOutput(ModelOutput):
+class ContrastiveSearchEncoderDecoderOutput(ModelOutput):   # contrastive search as the decoding strategy
+    # Contrastive search: A decoding strategy balancing between diversity (sampling) and 
+    #   relevance (maximizing likelihood). It uses contrastive metrics to avoid repetitive or generic outputs.
     """
-    Base class for outputs of decoder-only generation models using contrastive search.
+    Base class for outputs of decoder-only generation models using contrastive search. # decoder only is prpably a copy/paste-error
 
     Args:
         sequences (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
@@ -154,7 +156,7 @@ class ContrastiveSearchEncoderDecoderOutput(ModelOutput):
 
 
 @dataclass
-class ContrastiveSearchDecoderOnlyOutput(ModelOutput):
+class ContrastiveSearchDecoderOnlyOutput(ModelOutput): # contrastive search as the decoding strategy
     """
     Base class for outputs of decoder-only generation models using contrastive search.
 
@@ -183,7 +185,7 @@ class ContrastiveSearchDecoderOnlyOutput(ModelOutput):
 
 
 @dataclass
-class GreedySearchEncoderDecoderOutput(ModelOutput):
+class GreedySearchEncoderDecoderOutput(ModelOutput): # greedy search as the decoding strategy
     """
     Base class for outputs of encoder-decoder generation models using greedy search. Hidden states and attention
     weights of the decoder (respectively the encoder) can be accessed via the encoder_attentions and the
@@ -225,7 +227,10 @@ class GreedySearchEncoderDecoderOutput(ModelOutput):
 
 
 @dataclass
-class SampleDecoderOnlyOutput(ModelOutput):
+class SampleDecoderOnlyOutput(ModelOutput): # sampling-based generation asdecoding strategy
+    # Sampling is a decoding method where the next token is chosen probabilistically based on 
+    # a distribution of likelihoods (e.g., using temperature or top-k/top-p sampling), instead 
+    # of deterministically selecting the most likely token (as in greedy search).
     """
     Base class for outputs of decoder-only generation models using sampling.
 
@@ -254,7 +259,7 @@ class SampleDecoderOnlyOutput(ModelOutput):
 
 
 @dataclass
-class SampleEncoderDecoderOutput(ModelOutput):
+class SampleEncoderDecoderOutput(ModelOutput): # sampling-based generation asdecoding strategy
     """
     Base class for outputs of encoder-decoder generation models using sampling. Hidden states and attention weights of
     the decoder (respectively the encoder) can be accessed via the encoder_attentions and the encoder_hidden_states
@@ -471,7 +476,7 @@ BeamSampleOutput = Union[BeamSampleEncoderDecoderOutput, BeamSampleDecoderOnlyOu
 ContrastiveSearchOutput = Union[ContrastiveSearchEncoderDecoderOutput, ContrastiveSearchDecoderOnlyOutput]
 GenerateOutput = Union[GreedySearchOutput, SampleOutput, BeamSearchOutput, BeamSampleOutput, ContrastiveSearchOutput]
 
-class GenerationMode(ExplicitEnum):
+class GenerationMode(ExplicitEnum): # various modes of text generation
     """
     Possible generation modes, downstream of the [`~generation.GenerationMixin.generate`] method.
     """
@@ -489,6 +494,9 @@ class GenerationMode(ExplicitEnum):
 
     
 @torch.no_grad()
+# flexible implementation for generating sequences of text (or other tokenized outputs) 
+# from a language model. It serves as the core of the text generation process, 
+# supporting multiple strategies, configurations, and advanced features.
 def generate_interpret(
     model,
     inputs: Optional[torch.Tensor] = None,
@@ -1035,7 +1043,8 @@ def generate_interpret(
             **model_kwargs,
         )
 
-
+# specific implementation of the greedy search generation method for *transformer-based models*
+# straightforward method for generating text using greedy decoding
 def greedy_search_interpret(
         input_ids: torch.LongTensor,
         model = None,
