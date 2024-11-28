@@ -127,6 +127,10 @@ def interpret(original_prompt = None,
             # Call the generate_interpret function to generate outputs for the current batch
             output = generate_interpret(**batched_interpretation_prompt_model_inputs, model=model, max_new_tokens=max_new_tokens, insert_info=batch_insert_infos, pad_token_id=tokenizer.eos_token_id, output_attentions = False)
             
+            # Extracts a subset of tokens from the output tensor starting after the length of the interpretation prompt
+            # output is typically a tensor containing the generated tokens, including both the initial prompt and newly generated content
+            # repeat_prompt_n_tokens represents the number of tokens in the original interpretation prompt
+            # [:, repeat_prompt_n_tokens:] removes the tokens corresponding to the prompt, leaving newly generated tokens (the model's "interpretation").
             cropped_interpretation_tokens = output[:,repeat_prompt_n_tokens:]
             cropped_interpretation = tokenizer.batch_decode(cropped_interpretation_tokens, skip_special_tokens=True)
 
@@ -141,15 +145,14 @@ def interpret(original_prompt = None,
     torch.mps.empty_cache()
     torch.cuda.empty_cache()
     #
-    
     return interpretation_df
 
-    
-    
+
 def interpret_vectors(vecs=None, model=None, interpretation_prompt=None, tokenizer=None, bs = 8, k = 2, max_new_tokens=30):
     interpretation_prompt_model_inputs = interpretation_prompt.interpretation_prompt_model_inputs
     insert_locations = interpretation_prompt.insert_locations
     # replaced .to(model.device) with .to("cpu")
+    # Ensure model inputs are on the CPU
     interpretation_prompt_model_inputs = interpretation_prompt_model_inputs.to("cpu")
 
     all_interpretations = []
@@ -158,6 +161,7 @@ def interpret_vectors(vecs=None, model=None, interpretation_prompt=None, tokeniz
 
     batch_insert_infos = []
 
+    # Iterate through each vector in vecs to prepare input metadata and generate interpretations
     for vec_idx, vec in enumerate(vecs):
         insert_info = {}
         insert_info['replacing_mode'] = 'normalized'
@@ -166,19 +170,30 @@ def interpret_vectors(vecs=None, model=None, interpretation_prompt=None, tokeniz
         # insert_info['replacing_mode'] = 'addition'
         # insert_info['overlay_strength'] = 1000
 
+        # Add the insertion details (locations and  repeated vector) for all insert locations
+        # vector is repeated to match the number of tokens being replaced in the insertion process
         insert_info[1] = (insert_locations, vec.repeat(1,len(insert_locations), 1))
 
         batch_insert_infos.append(insert_info)
 
+        # Check if the batch size  is reached or if this is the last vector in vecs
         if len(batch_insert_infos) == bs or vec_idx == len(vecs) - 1:
             # replaced .to('cuda:0') with .to("cpu")
+            # prep model input for batch by repeating  interpretation prompt for each vector
             batched_interpretation_prompt_model_inputs = tokenizer([interpretation_prompt.interpretation_prompt] * len(batch_insert_infos), return_tensors="pt").to("cpu")
+            # Calc number of tokens in repeated prompt (used for slicing later)
             repeat_prompt_n_tokens = interpretation_prompt_model_inputs['input_ids'].shape[-1]
+            # Generate interpretations using the model and the batched inputs
+            # insert_info specifies where and how the vectors should be injected
             output = generate_interpret(**batched_interpretation_prompt_model_inputs, model=model, max_new_tokens=max_new_tokens, insert_info=batch_insert_infos, pad_token_id=tokenizer.eos_token_id, output_attentions = False)
             
+            # rmeove the repeated prompt tokens from output to isolate generated interpretations
             cropped_interpretation_tokens = output[:,repeat_prompt_n_tokens:]
+            # Decode tokenized interpretations into text
             cropped_interpretation = tokenizer.batch_decode(cropped_interpretation_tokens, skip_special_tokens=True)
+            # Add  generated interpretations for  batch to cumulative results.
             all_interpretations.extend(cropped_interpretation)
+            # Clear batch info to prepare for next batch
             batch_insert_infos = []
 
     return all_interpretations
