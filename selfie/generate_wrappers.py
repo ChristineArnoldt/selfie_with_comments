@@ -492,11 +492,10 @@ class GenerationMode(ExplicitEnum): # various modes of text generation
     CONSTRAINED_BEAM_SEARCH = "constrained_beam_search"
     GROUP_BEAM_SEARCH = "group_beam_search"
 
-    
-@torch.no_grad()
 # flexible implementation for generating sequences of text (or other tokenized outputs) 
 # from a language model. It serves as the core of the text generation process, 
-# supporting multiple strategies, configurations, and advanced features.
+# supporting multiple strategies, configurations, and advanced features    
+@torch.no_grad()
 def generate_interpret(
     model,
     inputs: Optional[torch.Tensor] = None,
